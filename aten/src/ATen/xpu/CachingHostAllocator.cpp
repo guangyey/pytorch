@@ -1,6 +1,11 @@
 #include <ATen/xpu/CachingHostAllocator.h>
 #include <c10/xpu/XPUGraphsC10Utils.h>
 
+#ifdef USE_XPU_SVM
+#include <stdlib.h>
+#include <sys/mman.h>
+#endif
+
 namespace at::xpu {
 namespace {
 
@@ -12,12 +17,26 @@ struct XPUCachingHostAllocatorImpl
     : public CachingHostAllocatorImpl<XPUStream, XPUEvent> {
   /* These following functions are runtime-related. */
   void allocate_host_memory(size_t size, void** ptr) override {
+#ifdef USE_XPU_SVM
+    // PowerOf2Ceil() guarantees that size is the power of two.
+    if (size >= c10::CachingAllocator::kRoundLarge) {
+      *ptr = std::aligned_alloc(c10::CachingAllocator::kRoundLarge, size);
+      madvise(*ptr, size, MADV_HUGEPAGE);
+    } else {
+      *ptr = std::malloc(size);
+    }
+#else
     *ptr = sycl::aligned_alloc_host(
         kHostAlignment, size, c10::xpu::get_device_context());
+#endif
   }
 
   void free_block(Block* block) override {
+#ifdef USE_XPU_SVM
+    std::free(block->ptr_);
+#else
     sycl::free(block->ptr_, c10::xpu::get_device_context());
+#endif
   }
 
   void record_stream(

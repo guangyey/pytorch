@@ -350,8 +350,13 @@ RAIIDataPtr RAII_gpuMalloc(size_t num_bytes) {
 RAIIDataPtr RAII_gpuMalloc(size_t num_bytes) {
   sycl::queue* queue_ptr = nullptr;
   aoti_torch_get_current_sycl_queue((void**)&queue_ptr);
+#if defined(USE_XPU_SVM)
+  void* data_ptr = malloc(num_bytes);
+  auto deleter = [](void* ptr) { free(ptr); };
+#else
   void* data_ptr = sycl::malloc_device(num_bytes, *queue_ptr);
   auto deleter = [queue_ptr](void* ptr) { sycl::free(ptr, *queue_ptr); };
+#endif
   return RAIIDataPtr(data_ptr, deleter);
 }
 

@@ -6,6 +6,10 @@
 #include <mutex>
 #include <set>
 #include <vector>
+#ifdef USE_XPU_SVM
+#include <stdlib.h>
+#include <sys/mman.h>
+#endif
 
 namespace c10::xpu::XPUCachingAllocator {
 
@@ -410,11 +414,20 @@ void allocPrimitive(void** ptr, size_t size, AllocParams& p) {
   if (p.pool->owner_PrivatePool && p.pool->owner_PrivatePool->allocator()) {
     *ptr = p.pool->owner_PrivatePool->allocator()->raw_alloc(size);
   } else {
+#ifdef USE_XPU_SVM
+    static_assert(
+        kSmallBuffer == kRoundLarge && kRoundLarge == 2097152,
+        "kSmallBuffer being equal to kRoundLarge, which is 2 MiB.");
+    // get_allocation_size guarantee that size is a multiple of kRoundLarge.
+    *ptr = std::aligned_alloc(kRoundLarge, size);
+    madvise(*ptr, size, MADV_HUGEPAGE);
+#else
     *ptr = sycl::aligned_alloc_device(
         kDeviceAlignment,
         size,
         xpu::get_raw_device(p.device()),
         xpu::get_device_context());
+#endif
   }
 }
 
@@ -422,7 +435,11 @@ void deletePrimitive(void* ptr, BlockPool* pool) {
   if (pool->owner_PrivatePool && pool->owner_PrivatePool->allocator()) {
     pool->owner_PrivatePool->allocator()->raw_delete(ptr);
   } else {
+#ifdef USE_XPU_SVM
+    std::free(ptr);
+#else
     sycl::free(ptr, xpu::get_device_context());
+#endif
   }
 }
 
@@ -1812,6 +1829,11 @@ class NativeCachingAllocator : public XPUAllocator {
   std::vector<std::unique_ptr<DeviceCachingAllocator>> device_allocators;
 
   void init(DeviceIndex device_count) override {
+#ifdef USE_XPU_SVM
+    TORCH_WARN_ONCE(
+        "XPU Caching Allocator is using the experimental SVM allocator. ",
+        "If you encounter issues, consider rebuilding PyTorch with `USE_XPU_SVM=0` to use the non-SVM allocator.");
+#endif
     const auto size = static_cast<DeviceIndex>(device_allocators.size());
     if (size < device_count) {
       device_allocators.resize(device_count);
