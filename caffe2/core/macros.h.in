@@ -67,5 +67,6 @@
   {"USE_ROCM_KERNEL_ASSERT", "${USE_ROCM_KERNEL_ASSERT}"}, \
   {"USE_CUSPARSELT", "${USE_CUSPARSELT}"}, \
   {"USE_XPU", "${USE_XPU}"}, \
+  {"USE_XPU_SVM", "${USE_XPU_SVM}"}, \
   {"USE_XCCL", "${USE_XCCL}"}, \
 }
