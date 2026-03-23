@@ -225,6 +225,13 @@ class C10_API AcceleratorAllocatorConfig {
 
   /* Settings for both device and host allocator */
 
+  // Returns whether shared virtual memory (SVM) support is enabled. This allows
+  // the allocator to use SVM features if supported by the hardware and backend.
+  // Default is false (SVM support disabled).
+  static bool use_svm() {
+    return instance().use_svm_;
+  }
+
   // Returns the current allocator settings as a string. This string is useful
   // to expand device-specific allocator configurations
   static std::string last_allocator_settings() {
@@ -242,7 +249,8 @@ class C10_API AcceleratorAllocatorConfig {
         "garbage_collection_threshold",
         "roundup_power2_divisions",
         "expandable_segments",
-        "pinned_use_background_threads"};
+        "pinned_use_background_threads",
+        "svm"};
     return keys;
   }
 
@@ -331,6 +339,11 @@ class C10_API AcceleratorAllocatorConfig {
       const ConfigTokenizer& tokenizer,
       size_t i);
 
+  /* Internal functions for both device and host allocator */
+
+  // Parse `svm` from environment variable.
+  size_t parseSVM(const ConfigTokenizer& tokenizer, size_t i);
+
   /* The following members are specifically used for the device allocator. */
 
   // "large" allocations may be packed in blocks of this size
@@ -355,6 +368,8 @@ class C10_API AcceleratorAllocatorConfig {
   std::atomic<bool> pinned_use_background_threads_{false};
 
   /* The following members are used for both device and host allocator. */
+  // A flag to enable shared virtual memory (SVM) support.
+  std::atomic<bool> use_svm_{false};
 
   // Record the last allocator config environment setting.
   std::mutex last_allocator_settings_mutex_;

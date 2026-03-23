@@ -418,9 +418,17 @@ void allocPrimitive(void** ptr, size_t size, AllocParams& p) {
     static_assert(
         kSmallBuffer == kRoundLarge && kRoundLarge == 2097152,
         "kSmallBuffer being equal to kRoundLarge, which is 2 MiB.");
-    // get_allocation_size guarantee that size is a multiple of kRoundLarge.
-    *ptr = std::aligned_alloc(kRoundLarge, size);
-    madvise(*ptr, size, MADV_HUGEPAGE);
+    if (c10::CachingAllocator::AcceleratorAllocatorConfig::use_svm()) {
+      // get_allocation_size guarantee that size is a multiple of kRoundLarge.
+      *ptr = std::aligned_alloc(kRoundLarge, size);
+      madvise(*ptr, size, MADV_HUGEPAGE);
+    } else {
+      *ptr = sycl::aligned_alloc_device(
+          kDeviceAlignment,
+          size,
+          xpu::get_raw_device(p.device()),
+          xpu::get_device_context());
+    }
 #else
     *ptr = sycl::aligned_alloc_device(
         kDeviceAlignment,
@@ -436,7 +444,11 @@ void deletePrimitive(void* ptr, BlockPool* pool) {
     pool->owner_PrivatePool->allocator()->raw_delete(ptr);
   } else {
 #ifdef USE_XPU_SVM
-    std::free(ptr);
+    if (c10::CachingAllocator::AcceleratorAllocatorConfig::use_svm()) {
+      std::free(ptr);
+    } else {
+      sycl::free(ptr, xpu::get_device_context());
+    }
 #else
     sycl::free(ptr, xpu::get_device_context());
 #endif
@@ -1830,9 +1842,12 @@ class NativeCachingAllocator : public XPUAllocator {
 
   void init(DeviceIndex device_count) override {
 #ifdef USE_XPU_SVM
-    TORCH_WARN_ONCE(
-        "XPU Caching Allocator is using the experimental SVM allocator. ",
-        "If you encounter issues, consider rebuilding PyTorch with `USE_XPU_SVM=0` to use the non-SVM allocator.");
+    if (c10::CachingAllocator::AcceleratorAllocatorConfig::use_svm()) {
+      TORCH_WARN_ONCE(
+          "XPU Caching Allocator is using the experimental SVM (Shared Virtual Memory) allocator. "
+          "If you encounter issues, you can disable it at runtime by setting "
+          "PYTORCH_ALLOC_CONF=svm:False, or at build time by rebuilding PyTorch without USE_XPU_SVM.");
+    }
 #endif
     const auto size = static_cast<DeviceIndex>(device_allocators.size());
     if (size < device_count) {
