@@ -18,12 +18,17 @@ struct XPUCachingHostAllocatorImpl
   /* These following functions are runtime-related. */
   void allocate_host_memory(size_t size, void** ptr) override {
 #ifdef USE_XPU_SVM
-    // PowerOf2Ceil() guarantees that size is the power of two.
-    if (size >= c10::CachingAllocator::kRoundLarge) {
-      *ptr = std::aligned_alloc(c10::CachingAllocator::kRoundLarge, size);
-      madvise(*ptr, size, MADV_HUGEPAGE);
+    if (c10::CachingAllocator::AcceleratorAllocatorConfig::use_svm()) {
+      // PowerOf2Ceil() guarantees that size is the power of two.
+      if (size >= c10::CachingAllocator::kRoundLarge) {
+        *ptr = std::aligned_alloc(c10::CachingAllocator::kRoundLarge, size);
+        madvise(*ptr, size, MADV_HUGEPAGE);
+      } else {
+        *ptr = std::malloc(size);
+      }
     } else {
-      *ptr = std::malloc(size);
+      *ptr = sycl::aligned_alloc_host(
+          kHostAlignment, size, c10::xpu::get_device_context());
     }
 #else
     *ptr = sycl::aligned_alloc_host(
@@ -33,7 +38,11 @@ struct XPUCachingHostAllocatorImpl
 
   void free_block(Block* block) override {
 #ifdef USE_XPU_SVM
-    std::free(block->ptr_);
+    if (c10::CachingAllocator::AcceleratorAllocatorConfig::use_svm()) {
+      std::free(block->ptr_);
+    } else {
+      sycl::free(block->ptr_, c10::xpu::get_device_context());
+    }
 #else
     sycl::free(block->ptr_, c10::xpu::get_device_context());
 #endif

@@ -207,6 +207,22 @@ size_t AcceleratorAllocatorConfig::parseExpandableSegments(
   return i;
 }
 
+size_t AcceleratorAllocatorConfig::parseSVM(
+    const ConfigTokenizer& tokenizer,
+    size_t i) {
+  tokenizer.checkToken(++i, ":");
+  use_svm_ = tokenizer.toBool(++i);
+#ifndef USE_XPU_SVM
+  TORCH_CHECK(
+      !use_svm_,
+      "PYTORCH_ALLOC_CONF=svm:True is set, but this build was compiled "
+      "without USE_XPU_SVM support. To enable SVM, rebuild PyTorch with "
+      "USE_XPU_SVM=1.");
+#endif
+
+  return i;
+}
+
 size_t AcceleratorAllocatorConfig::parsePinnedUseBackgroundThreads(
     const ConfigTokenizer& tokenizer,
     size_t i) {
@@ -256,6 +272,8 @@ void AcceleratorAllocatorConfig::parseArgs(const std::string& env) {
       i = parseExpandableSegments(tokenizer, i);
     } else if (key == "pinned_use_background_threads") {
       i = parsePinnedUseBackgroundThreads(tokenizer, i);
+    } else if (key == "svm") {
+      i = parseSVM(tokenizer, i);
     } else {
       // If a device-specific configuration parser hook is registered, it will
       // check if the key is unrecognized.

@@ -46,6 +46,13 @@ aoti_torch_set_current_xpu_device(const int32_t& device_index);
 
 AOTI_TORCH_EXPORT AOTITorchError aoti_torch_get_current_sycl_queue(void** ret);
 
+#ifdef USE_XPU_SVM
+// Returns true if the XPU allocator is configured to use Shared Virtual Memory
+// (SVM). This shim exists so that aoti_runtime code can query the allocator
+// config without taking a direct dependency on c10 headers.
+AOTI_TORCH_EXPORT bool aoti_torch_xpu_use_svm();
+#endif // USE_XPU_SVM
+
 #if AT_MKLDNN_ENABLED()
 
 AOTI_TORCH_EXPORT AOTITorchError

@@ -2,6 +2,7 @@
 #include <torch/csrc/inductor/aoti_torch/c/shim_xpu.h>
 #include <torch/csrc/inductor/aoti_torch/utils.h>
 
+#include <c10/core/AllocatorConfig.h>
 #include <c10/core/DeviceGuard.h>
 #include <c10/core/DeviceType.h>
 #include <c10/core/StreamGuard.h>
@@ -77,6 +78,12 @@ AOTITorchError aoti_torch_get_current_sycl_queue(void** ret) {
     *ret = &(at::xpu::getCurrentXPUStream(device_index).queue());
   });
 }
+
+#ifdef USE_XPU_SVM
+bool aoti_torch_xpu_use_svm() {
+  return c10::CachingAllocator::AcceleratorAllocatorConfig::use_svm();
+}
+#endif // USE_XPU_SVM
 
 #if AT_MKLDNN_ENABLED()
 #include <ATen/native/mkldnn/xpu/Conv.h>
